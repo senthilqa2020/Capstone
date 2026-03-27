@@ -1,0 +1,57 @@
+flowchart TD
+    A[Client / Postman\nPOST /generate] --> B[Express API\nindex.js]
+
+    B --> C{Validate Request}
+    C -->|Missing requirement| C1[400 Bad Request]
+    C -->|Valid| D[QA Agent Loop\nOpenAI tool-calling]
+
+    subgraph RAG ["RAG Pipeline"]
+        E1[search_knowledge_base]
+        E2[(Vectra Vector Store\nQA Best Practices)]
+        E3[OpenAI Embeddings\ntext-embedding-3-small]
+        E1 --> E3 --> E2
+        E2 -->|Top-K relevant docs| E1
+    end
+
+    subgraph Agent ["Autonomous Agent — Tool Execution"]
+        F1[Tool: search_knowledge_base]
+        F2[Tool: generate_test_cases]
+        F3[Tool: validate_test_cases]
+        F4[Tool: revise_test_cases\nonly if score below 8]
+
+        F1 -->|Retrieved QA context| F2
+        F2 -->|Generated test cases| F3
+        F3 -->|Validation score + issues| F4
+        F4 -->|Revised test cases| G[Final Output]
+        F3 -->|Score >= 8| G
+    end
+
+    D --> F1
+    F1 <--> E1
+
+    subgraph Reflection ["Reflection / Self-Correction"]
+        H1[reflect — score output 0-10]
+        H2{Score < 8?}
+        H3[revise — fix identified issues]
+        H4[Accept output]
+        H1 --> H2
+        H2 -->|Yes| H3
+        H2 -->|No| H4
+    end
+
+    G --> H1
+    H3 --> I[Final Revised Output]
+    H4 --> I
+
+    I --> J{MongoDB available?}
+    J -->|Yes| J1[(MongoDB\nTestCase collection)]
+    J -->|No| J2[Skip persistence\nreturn response only]
+    J1 --> K[200 JSON Response\noutput + agentTrace + reflection]
+    J2 --> K
+
+    subgraph Fallback ["Fallback Mode (missing/invalid key or quota exceeded)"]
+        L[Local template generator]
+    end
+
+    B -->|No key / 401 / 429| L
+    L --> J
